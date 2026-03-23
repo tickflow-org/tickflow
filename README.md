@@ -168,9 +168,10 @@ for q in quotes:
 
 ### 目前支持状态
 
-- **A 股（SH / SZ / BJ）**：已支持。可查实时行情、日 K、分钟 K、标的池（如 `CN_Equity_A`）等。
+- **A 股（SH / SZ / BJ）**：已支持。可查实时行情、日 K、分钟 K、日内分时、财务数据、标的池（如 `CN_Equity_A`）等。
 - **国内期货（SHF / DCE / ZCE / CFX / INE / GFE）**：支持主力合约查询。按合约代码 + 后缀查询（如 `au2604.SHF`）。
-- **美股（US）、港股（HK）**：接口与标的格式已支持，但暂无数据。
+- **美股（US）**：已支持。实时行情、全量历史日 K 线（支持前复权/后复权）、除权因子、标的池（`US_Equity`）。
+- **港股（HK）**：已支持。实时行情、全量历史日 K 线（支持前复权/后复权）、除权因子、标的池（`HK_Equity`）。
 
 按标的查询时传入上述格式的字符串或列表即可：
 
@@ -182,8 +183,8 @@ tf = TickFlow(api_key="your-api-key")
 symbols = [
     "600000.SH",   # 沪市
     "000001.SZ",   # 深市
-    "920662.BJ",   # 北交所
-    "au2604.SHF",  # 上期所期货
+    "AAPL.US",     # 美股
+    "00700.HK",    # 港股
 ]
 quotes = tf.quotes.get(symbols=symbols, as_dataframe=True)
 print(quotes)
