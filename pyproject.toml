@@ -1,6 +1,6 @@
 [project]
 name = "tickflow"
-version = "0.1.18"
+version = "0.1.19"
 description = "TickFlow Python Client"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -33,10 +33,15 @@ dependencies = [
 pandas = ["pandas>=1.5.0"]
 # Progress bar for batch operations
 progress = ["tqdm>=4.60.0"]
+# Real-time WebSocket streaming
+realtime = [
+    "websockets>=13.0",
+]
 # All optional features
 all = [
     "pandas>=1.5.0",
     "tqdm>=4.60.0",
+    "websockets>=13.0",
 ]
 
 [project.urls]

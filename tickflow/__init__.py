@@ -47,6 +47,7 @@ from .generated_model import (
     Region,
     SessionStatus,
 )
+from .resources.realtime import AsyncQuoteStream, QuoteStream
 
 __all__ = [
     "__version__",
@@ -72,4 +73,7 @@ __all__ = [
     "Quote",
     "Region",
     "SessionStatus",
+    # Real-time streaming
+    "QuoteStream",
+    "AsyncQuoteStream",
 ]

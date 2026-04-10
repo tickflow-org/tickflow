@@ -5,6 +5,7 @@ from .financials import AsyncFinancials, Financials
 from .instruments import AsyncInstruments, Instruments
 from .klines import AsyncKlines, Klines
 from .quotes import AsyncQuotes, Quotes
+from .realtime import AsyncQuoteStream, QuoteStream
 from .universes import AsyncUniverses, Universes
 
 __all__ = [
@@ -18,6 +19,8 @@ __all__ = [
     "AsyncKlines",
     "Quotes",
     "AsyncQuotes",
+    "QuoteStream",
+    "AsyncQuoteStream",
     "Universes",
     "AsyncUniverses",
 ]

@@ -21,12 +21,14 @@ from .resources import (
     AsyncInstruments,
     AsyncKlines,
     AsyncQuotes,
+    AsyncQuoteStream,
     AsyncUniverses,
     Exchanges,
     Financials,
     Instruments,
     Klines,
     Quotes,
+    QuoteStream,
     Universes,
 )
 
@@ -83,6 +85,8 @@ class TickFlow:
         Universe (symbol pool) endpoints.
     financials : Financials
         Financial statement endpoints (income, balance sheet, cash flow, metrics).
+    realtime : QuoteStream
+        WebSocket-based real-time quote streaming (requires ``pip install tickflow[realtime]``).
 
     Examples
     --------
@@ -104,6 +108,16 @@ class TickFlow:
     >>> # Get financial data
     >>> income = client.financials.income(["600519.SH"], as_dataframe=True)
 
+    Real-time streaming:
+
+    >>> stream = client.realtime
+    >>> @stream.on_quotes
+    ... def handle(quotes):
+    ...     for q in quotes:
+    ...         print(f"{q['symbol']}: {q['last_price']}")
+    >>> stream.subscribe(["600000.SH"])
+    >>> stream.connect()
+
     Using context manager:
 
     >>> with TickFlow(api_key="your-api-key") as client:
@@ -123,6 +137,7 @@ class TickFlow:
     exchanges: Exchanges
     universes: Universes
     financials: Financials
+    realtime: QuoteStream
 
     def __init__(
         self,
@@ -149,6 +164,7 @@ class TickFlow:
         self.exchanges = Exchanges(self._client)
         self.universes = Universes(self._client)
         self.financials = Financials(self._client)
+        self.realtime = QuoteStream(self._client)
 
     def __enter__(self) -> "TickFlow":
         return self
@@ -343,6 +359,7 @@ class AsyncTickFlow:
     exchanges: AsyncExchanges
     universes: AsyncUniverses
     financials: AsyncFinancials
+    realtime: AsyncQuoteStream
 
     def __init__(
         self,
@@ -369,6 +386,7 @@ class AsyncTickFlow:
         self.exchanges = AsyncExchanges(self._client)
         self.universes = AsyncUniverses(self._client)
         self.financials = AsyncFinancials(self._client)
+        self.realtime = AsyncQuoteStream(self._client)
 
     async def __aenter__(self) -> "AsyncTickFlow":
         return self
