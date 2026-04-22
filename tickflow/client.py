@@ -16,17 +16,21 @@ from ._base_client import DEFAULT_MAX_RETRIES, AsyncAPIClient, SyncAPIClient
 from ._cache import InstrumentNameCache
 from ._types import Headers, Timeout
 from .resources import (
+    AsyncDepth,
     AsyncExchanges,
     AsyncFinancials,
     AsyncInstruments,
     AsyncKlines,
+    AsyncMarketStream,
     AsyncQuotes,
     AsyncQuoteStream,
     AsyncUniverses,
+    Depth,
     Exchanges,
     Financials,
     Instruments,
     Klines,
+    MarketStream,
     Quotes,
     QuoteStream,
     Universes,
@@ -67,6 +71,9 @@ class TickFlow:
         Can also be set via TICKFLOW_BASE_URL environment variable.
     timeout : float, optional
         Request timeout in seconds. Defaults to 30.0.
+    max_retries : int, optional
+        Maximum number of retry attempts for failed requests. Defaults to 3.
+        Retries occur on connection errors, timeouts, and server errors (5xx).
     default_headers : dict, optional
         Default headers to include in all requests.
 
@@ -77,6 +84,8 @@ class TickFlow:
         Supports DataFrame conversion and forward/backward adjustment.
     quotes : Quotes
         Real-time quote endpoints.
+    depth : Depth
+        Market depth (5-level order book) endpoint.
     instruments : Instruments
         Instrument metadata endpoints.
     exchanges : Exchanges
@@ -85,8 +94,12 @@ class TickFlow:
         Universe (symbol pool) endpoints.
     financials : Financials
         Financial statement endpoints (income, balance sheet, cash flow, metrics).
+    stream : MarketStream
+        Unified WebSocket streaming with per-channel subscriptions (``/v1/ws/stream``).
+        Supports ``quotes`` and ``depth`` channels.
     realtime : QuoteStream
-        WebSocket-based real-time quote streaming (requires ``pip install tickflow[realtime]``).
+        .. deprecated:: Use ``stream`` instead.
+        Legacy WebSocket quote-only streaming (``/v1/ws/quotes``).
 
     Examples
     --------
@@ -110,12 +123,12 @@ class TickFlow:
 
     Real-time streaming:
 
-    >>> stream = client.realtime
+    >>> stream = client.stream
     >>> @stream.on_quotes
     ... def handle(quotes):
     ...     for q in quotes:
     ...         print(f"{q['symbol']}: {q['last_price']}")
-    >>> stream.subscribe(["600000.SH"])
+    >>> stream.subscribe("quotes", ["600000.SH"])
     >>> stream.connect()
 
     Using context manager:
@@ -133,11 +146,12 @@ class TickFlow:
 
     klines: Klines
     quotes: Quotes
+    depth: Depth
     instruments: Instruments
     exchanges: Exchanges
     universes: Universes
     financials: Financials
-    realtime: QuoteStream
+    stream: MarketStream
 
     def __init__(
         self,
@@ -160,11 +174,20 @@ class TickFlow:
 
         self.klines = Klines(self._client, instrument_cache=self._instrument_cache)
         self.quotes = Quotes(self._client)
+        self.depth = Depth(self._client)
         self.instruments = Instruments(self._client)
         self.exchanges = Exchanges(self._client)
         self.universes = Universes(self._client)
         self.financials = Financials(self._client)
-        self.realtime = QuoteStream(self._client)
+        self.stream = MarketStream(self._client)
+        self._realtime: Optional[QuoteStream] = None
+
+    @property
+    def realtime(self) -> QuoteStream:
+        """Legacy quote-only stream. Deprecated: use ``stream`` instead."""
+        if self._realtime is None:
+            self._realtime = QuoteStream(self._client)
+        return self._realtime
 
     def __enter__(self) -> "TickFlow":
         return self
@@ -310,6 +333,8 @@ class AsyncTickFlow:
         K-line (OHLCV) data endpoints, including adjustment factors.
     quotes : AsyncQuotes
         Real-time quote endpoints.
+    depth : AsyncDepth
+        Market depth (5-level order book) endpoint.
     instruments : AsyncInstruments
         Instrument metadata endpoints.
     exchanges : AsyncExchanges
@@ -318,6 +343,9 @@ class AsyncTickFlow:
         Universe (symbol pool) endpoints.
     financials : AsyncFinancials
         Financial statement endpoints (income, balance sheet, cash flow, metrics).
+    stream : AsyncMarketStream
+        Unified WebSocket streaming with per-channel subscriptions (``/v1/ws/stream``).
+        Supports ``quotes`` and ``depth`` channels.
 
     Examples
     --------
@@ -355,11 +383,12 @@ class AsyncTickFlow:
 
     klines: AsyncKlines
     quotes: AsyncQuotes
+    depth: AsyncDepth
     instruments: AsyncInstruments
     exchanges: AsyncExchanges
     universes: AsyncUniverses
     financials: AsyncFinancials
-    realtime: AsyncQuoteStream
+    stream: AsyncMarketStream
 
     def __init__(
         self,
@@ -382,11 +411,20 @@ class AsyncTickFlow:
 
         self.klines = AsyncKlines(self._client, instrument_cache=self._instrument_cache)
         self.quotes = AsyncQuotes(self._client)
+        self.depth = AsyncDepth(self._client)
         self.instruments = AsyncInstruments(self._client)
         self.exchanges = AsyncExchanges(self._client)
         self.universes = AsyncUniverses(self._client)
         self.financials = AsyncFinancials(self._client)
-        self.realtime = AsyncQuoteStream(self._client)
+        self.stream = AsyncMarketStream(self._client)
+        self._realtime: Optional[AsyncQuoteStream] = None
+
+    @property
+    def realtime(self) -> AsyncQuoteStream:
+        """Legacy quote-only stream. Deprecated: use ``stream`` instead."""
+        if self._realtime is None:
+            self._realtime = AsyncQuoteStream(self._client)
+        return self._realtime
 
     async def __aenter__(self) -> "AsyncTickFlow":
         return self

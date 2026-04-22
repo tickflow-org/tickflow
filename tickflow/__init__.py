@@ -48,6 +48,7 @@ from .generated_model import (
     SessionStatus,
 )
 from .resources.realtime import AsyncQuoteStream, QuoteStream
+from .resources.stream import AsyncMarketStream, MarketStream
 
 __all__ = [
     "__version__",
@@ -73,7 +74,10 @@ __all__ = [
     "Quote",
     "Region",
     "SessionStatus",
-    # Real-time streaming
+    # Unified streaming (recommended)
+    "MarketStream",
+    "AsyncMarketStream",
+    # Legacy streaming (deprecated, use MarketStream / AsyncMarketStream)
     "QuoteStream",
     "AsyncQuoteStream",
 ]

@@ -1,10 +1,24 @@
-"""WebSocket-based real-time quote streaming for TickFlow API.
+"""Unified WebSocket stream with per-channel subscriptions (`/v1/ws/stream`).
 
-.. deprecated::
-    Use :class:`~tickflow.resources.stream.MarketStream` (``tf.stream``) instead.
-    This module connects to the legacy ``/v1/ws/quotes`` endpoint which only
-    supports quote data.  ``tf.stream`` connects to ``/v1/ws/stream`` and
-    supports both ``quotes`` and ``depth`` channels.
+Supported channels: ``quotes``, ``depth``.
+
+Usage::
+
+    stream = tf.stream
+
+    @stream.on_quotes
+    def handle(quotes):
+        for q in quotes:
+            print(q["symbol"], q["last_price"])
+
+    @stream.on_depth
+    def handle_depth(depths):
+        for d in depths:
+            print(d["symbol"], d["bid_prices"][0])
+
+    stream.subscribe("quotes", ["600000.SH"])
+    stream.subscribe("depth", ["600000.SH"])
+    stream.connect()
 """
 
 from __future__ import annotations
@@ -12,32 +26,28 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-import warnings
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Set
+
+from typing_extensions import TypeAlias
 
 if TYPE_CHECKING:
     from .._base_client import AsyncAPIClient, SyncAPIClient
 
-logger = logging.getLogger("tickflow.realtime")
+logger = logging.getLogger("tickflow.stream")
 
-_DEPRECATION_MSG = (
-    "QuoteStream (tf.realtime) is deprecated and will be removed in a future version. "
-    "Use MarketStream (tf.stream) instead, which supports both quotes and depth channels."
-)
+_NO_RETRY_STATUS_CODES = {401, 403, 404}
+
+Channel: TypeAlias = Literal["quotes", "depth"]
 
 
 def _build_ws_url(base_url: str, api_key: str) -> str:
     base = base_url.rstrip("/")
     scheme = "wss" if base.startswith("https") else "ws"
     stripped = base.replace("https://", "").replace("http://", "")
-    return f"{scheme}://{stripped}/v1/ws/quotes?api_key={api_key}"
-
-
-_NO_RETRY_STATUS_CODES = {401, 403, 404}
+    return f"{scheme}://{stripped}/v1/ws/stream?api_key={api_key}"
 
 
 def _get_status_code(exc: Exception) -> Optional[int]:
-    """Extract HTTP status code from a websockets rejection exception."""
     resp = getattr(exc, "response", None)
     if resp is not None:
         code = getattr(resp, "status_code", None)
@@ -47,7 +57,6 @@ def _get_status_code(exc: Exception) -> Optional[int]:
 
 
 def _extract_rejection_reason(exc: Exception) -> str:
-    """Extract a human-readable reason from a websockets rejection error."""
     try:
         resp = getattr(exc, "response", None)
         if resp is not None:
@@ -72,11 +81,15 @@ def _extract_rejection_reason(exc: Exception) -> str:
     return str(exc)
 
 
-class QuoteStream:
-    """Synchronous real-time quote stream over WebSocket.
+# ============================================================================
+# Synchronous wrapper
+# ============================================================================
 
-    .. deprecated::
-        Use :class:`~tickflow.resources.stream.MarketStream` (``tf.stream``) instead.
+
+class MarketStream:
+    """Synchronous unified stream over WebSocket.
+
+    Runs the async loop in a background thread.
 
     Parameters
     ----------
@@ -85,40 +98,54 @@ class QuoteStream:
     """
 
     def __init__(self, client: "SyncAPIClient") -> None:
-        warnings.warn(_DEPRECATION_MSG, DeprecationWarning, stacklevel=2)
         self._base_url = client.base_url
         self._api_key = client.api_key or ""
-        self._handler: Optional[Callable[[List[Dict[str, Any]]], None]] = None
+        self._handlers: Dict[str, Callable[[List[Dict[str, Any]]], None]] = {}
         self._error_handler: Optional[Callable[[str], None]] = None
-        self._symbols: Set[str] = set()
+        # channel -> symbols (pending subscriptions before connect)
+        self._pending_subs: Dict[str, Set[str]] = {}
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
-        self._inner: Optional[AsyncQuoteStream] = None
+        self._inner: Optional[AsyncMarketStream] = None
+
+    # -- callbacks --
 
     def on_quotes(self, fn: Callable[[List[Dict[str, Any]]], None]) -> Callable:
-        """Register a callback for incoming quote batches. Can be used as decorator."""
-        self._handler = fn
+        """Register a handler for ``quotes`` channel. Usable as decorator."""
+        self._handlers["quotes"] = fn
+        return fn
+
+    def on_depth(self, fn: Callable[[List[Dict[str, Any]]], None]) -> Callable:
+        """Register a handler for ``depth`` channel. Usable as decorator."""
+        self._handlers["depth"] = fn
         return fn
 
     def on_error(self, fn: Callable[[str], None]) -> Callable:
-        """Register a callback for server error messages. Can be used as decorator."""
+        """Register an error handler. Usable as decorator."""
         self._error_handler = fn
         return fn
 
-    def subscribe(self, symbols: List[str]) -> None:
-        """Subscribe to symbols. Can be called before or after connect()."""
-        self._symbols.update(symbols)
-        if self._inner and self._loop and self._loop.is_running():
-            asyncio.run_coroutine_threadsafe(self._inner.subscribe(symbols), self._loop)
+    # -- subscription --
 
-    def unsubscribe(self, symbols: List[str]) -> None:
-        """Unsubscribe from symbols."""
-        self._symbols -= set(symbols)
+    def subscribe(self, channel: Channel, symbols: List[str]) -> None:
+        """Subscribe to *channel* for *symbols*. Safe before or after connect()."""
+        self._pending_subs.setdefault(channel, set()).update(symbols)
         if self._inner and self._loop and self._loop.is_running():
             asyncio.run_coroutine_threadsafe(
-                self._inner.unsubscribe(symbols), self._loop
+                self._inner.subscribe(channel, symbols), self._loop
             )
+
+    def unsubscribe(self, channel: Channel, symbols: List[str]) -> None:
+        """Unsubscribe *symbols* from *channel*."""
+        if channel in self._pending_subs:
+            self._pending_subs[channel] -= set(symbols)
+        if self._inner and self._loop and self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(
+                self._inner.unsubscribe(channel, symbols), self._loop
+            )
+
+    # -- lifecycle --
 
     def connect(self, *, block: bool = True) -> None:
         """Start the WebSocket connection.
@@ -126,8 +153,8 @@ class QuoteStream:
         Parameters
         ----------
         block : bool
-            If True (default), blocks the calling thread until the stream
-            is closed or interrupted. If False, runs in a background thread.
+            If True (default), blocks until close() or KeyboardInterrupt.
+            If False, runs in a daemon thread.
         """
         if block:
             try:
@@ -139,7 +166,6 @@ class QuoteStream:
             self._thread.start()
 
     def close(self) -> None:
-        """Stop the stream and clean up."""
         self._stop.set()
         if self._inner and self._loop and self._loop.is_running():
             asyncio.run_coroutine_threadsafe(self._inner.close(), self._loop)
@@ -149,73 +175,89 @@ class QuoteStream:
 
     async def _run(self) -> None:
         self._loop = asyncio.get_event_loop()
-        self._inner = AsyncQuoteStream.__new__(AsyncQuoteStream)
-        self._inner._ws_url = _build_ws_url(self._base_url, self._api_key)
-        self._inner._handler = self._handler
-        self._inner._error_handler = self._error_handler
-        self._inner._symbols = set(self._symbols)
-        self._inner._ws = None
-        self._inner._closed = False
-        await self._inner._connect_and_run()
+        inner = AsyncMarketStream.__new__(AsyncMarketStream)
+        inner._ws_url = _build_ws_url(self._base_url, self._api_key)
+        inner._handlers = dict(self._handlers)
+        inner._error_handler = self._error_handler
+        inner._subs = {ch: set(s) for ch, s in self._pending_subs.items()}
+        inner._ws = None
+        inner._closed = False
+        self._inner = inner
+        await inner._connect_and_run()
 
 
-class AsyncQuoteStream:
-    """Async real-time quote stream over WebSocket.
+# ============================================================================
+# Async implementation
+# ============================================================================
 
-    .. deprecated::
-        Use :class:`~tickflow.resources.stream.AsyncMarketStream` (``tf.stream``) instead.
+
+class AsyncMarketStream:
+    """Async unified stream over WebSocket.
 
     Parameters
     ----------
     client : AsyncAPIClient
-        The underlying async HTTP client (used for base_url and api_key).
+        The underlying async HTTP client.
     """
 
     def __init__(self, client: "AsyncAPIClient") -> None:
-        warnings.warn(_DEPRECATION_MSG, DeprecationWarning, stacklevel=2)
         self._ws_url = _build_ws_url(client.base_url, client.api_key or "")
-        self._handler: Optional[Callable[[List[Dict[str, Any]]], None]] = None
+        self._handlers: Dict[str, Callable[[List[Dict[str, Any]]], None]] = {}
         self._error_handler: Optional[Callable[[str], None]] = None
-        self._symbols: Set[str] = set()
+        self._subs: Dict[str, Set[str]] = {}
         self._ws: Any = None
         self._closed = False
 
+    # -- callbacks --
+
     def on_quotes(self, fn: Callable[[List[Dict[str, Any]]], None]) -> Callable:
-        """Register a callback for incoming quote batches. Can be used as decorator."""
-        self._handler = fn
+        self._handlers["quotes"] = fn
+        return fn
+
+    def on_depth(self, fn: Callable[[List[Dict[str, Any]]], None]) -> Callable:
+        self._handlers["depth"] = fn
         return fn
 
     def on_error(self, fn: Callable[[str], None]) -> Callable:
-        """Register a callback for server error messages. Can be used as decorator."""
         self._error_handler = fn
         return fn
 
-    async def subscribe(self, symbols: List[str]) -> None:
-        """Subscribe to symbols."""
-        self._symbols.update(symbols)
-        if self._ws:
-            await self._send_op("subscribe", list(symbols))
+    # -- subscription --
 
-    async def unsubscribe(self, symbols: List[str]) -> None:
-        """Unsubscribe from symbols."""
-        self._symbols -= set(symbols)
+    async def subscribe(self, channel: Channel, symbols: List[str]) -> None:
+        """Subscribe to *channel* for *symbols*."""
+        self._subs.setdefault(channel, set()).update(symbols)
         if self._ws:
-            await self._send_op("unsubscribe", list(symbols))
+            await self._send(
+                {"op": "subscribe", "channel": channel, "symbols": symbols}
+            )
+
+    async def unsubscribe(self, channel: Channel, symbols: List[str]) -> None:
+        """Unsubscribe *symbols* from *channel*."""
+        if channel in self._subs:
+            self._subs[channel] -= set(symbols)
+        if self._ws:
+            await self._send(
+                {"op": "unsubscribe", "channel": channel, "symbols": symbols}
+            )
+
+    # -- lifecycle --
 
     async def connect(self) -> None:
         """Start the WebSocket connection. Blocks until closed."""
         await self._connect_and_run()
 
     async def close(self) -> None:
-        """Close the stream."""
         self._closed = True
         if self._ws:
             await self._ws.close()
 
-    async def _send_op(self, op: str, symbols: List[str]) -> None:
+    # -- internals --
+
+    async def _send(self, payload: dict) -> None:
         import json
 
-        await self._ws.send(json.dumps({"op": op, "symbols": symbols}))
+        await self._ws.send(json.dumps(payload))
 
     async def _connect_and_run(self) -> None:
         import json
@@ -234,18 +276,31 @@ class AsyncQuoteStream:
                     self._ws = ws
                     logger.info("Connected to %s", self._ws_url.split("?")[0])
 
-                    # Re-subscribe all symbols on (re)connect
-                    if self._symbols:
-                        await self._send_op("subscribe", list(self._symbols))
+                    # Re-subscribe all channels on (re)connect
+                    for ch, syms in self._subs.items():
+                        if syms:
+                            await self._send(
+                                {
+                                    "op": "subscribe",
+                                    "channel": ch,
+                                    "symbols": list(syms),
+                                }
+                            )
 
                     async for raw in ws:
                         msg = json.loads(raw)
-
                         op = msg.get("op")
-                        if op == "quotes" and self._handler:
-                            self._handler(msg.get("data", []))
+
+                        if op in ("quotes", "depth"):
+                            handler = self._handlers.get(op)
+                            if handler:
+                                handler(msg.get("data", []))
                         elif op == "subscribed":
-                            logger.info("Subscribed: %d symbols", msg.get("total", 0))
+                            logger.info(
+                                "Subscribed [%s]: %d symbols",
+                                msg.get("channel", "?"),
+                                msg.get("total", 0),
+                            )
                         elif op == "error":
                             err_msg = msg.get("message", "unknown error")
                             logger.warning("Server error: %s", err_msg)
@@ -269,4 +324,4 @@ class AsyncQuoteStream:
             finally:
                 self._ws = None
 
-        logger.info("Quote stream closed")
+        logger.info("Market stream closed")

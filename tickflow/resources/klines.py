@@ -256,8 +256,7 @@ class Klines(SyncResource):
         symbol : str
             Symbol code (e.g., "600000.SH", "AAPL.US").
         period : str, optional
-            K-line period. One of: "1m", "5m", "10m", "15m", "30m", "60m",
-            "4h", "1d", "1w", "1M". Defaults to "1d".
+            K-line period. One of: "1m", "5m", "10m", "15m", "30m", "60m", "1d", "1w", "1M". Defaults to "1d".
         count : int, optional
             Number of K-lines to return. Default 100, max 10000.
         start_time : int, optional
@@ -812,7 +811,7 @@ class AsyncKlines(AsyncResource):
             Symbol code (e.g., "600000.SH", "AAPL.US").
         period : str, optional
             K-line period. One of: "1m", "5m", "10m", "15m", "30m", "60m",
-            "4h", "1d", "1w", "1M". Defaults to "1d".
+            "1d", "1w", "1M". Defaults to "1d".
         count : int, optional
             Number of K-lines to return. Default 100, max 10000.
         start_time : int, optional
