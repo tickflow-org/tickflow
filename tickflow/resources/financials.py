@@ -16,6 +16,7 @@ if TYPE_CHECKING:
         CashFlowRecord,
         IncomeRecord,
         MetricsRecord,
+        SharesRecord,
     )
 
 MAX_FINANCIAL_SYMBOLS = 100
@@ -25,6 +26,7 @@ _STMT_ENDPOINTS = {
     "balance_sheet": "/v1/financials/balance-sheet",
     "cash_flow": "/v1/financials/cash-flow",
     "metrics": "/v1/financials/metrics",
+    "shares": "/v1/financials/shares",
 }
 
 
@@ -215,6 +217,32 @@ class Financials(SyncResource):
             max_workers,
         )
 
+    def shares(
+        self,
+        symbols: List[str],
+        *,
+        start_date: Union[str, None, NotGiven] = NOT_GIVEN,
+        end_date: Union[str, None, NotGiven] = NOT_GIVEN,
+        latest: Union[bool, None, NotGiven] = NOT_GIVEN,
+        as_dataframe: bool = False,
+        batch_size: int = MAX_FINANCIAL_SYMBOLS,
+        show_progress: bool = False,
+        max_workers: int = 5,
+    ) -> Union[Dict[str, List["SharesRecord"]], "pd.DataFrame"]:
+        """Get shares data (total shares and float shares)."""
+        return self._query(
+            _STMT_ENDPOINTS["shares"],
+            symbols,
+            start_date,
+            end_date,
+            latest,
+            as_dataframe,
+            "shares",
+            batch_size,
+            show_progress,
+            max_workers,
+        )
+
 
 class AsyncFinancials(AsyncResource):
     """Asynchronous interface for financial data endpoints.
@@ -359,6 +387,32 @@ class AsyncFinancials(AsyncResource):
             latest,
             as_dataframe,
             "metrics",
+            batch_size,
+            show_progress,
+            max_concurrency,
+        )
+
+    async def shares(
+        self,
+        symbols: List[str],
+        *,
+        start_date: Union[str, None, NotGiven] = NOT_GIVEN,
+        end_date: Union[str, None, NotGiven] = NOT_GIVEN,
+        latest: Union[bool, None, NotGiven] = NOT_GIVEN,
+        as_dataframe: bool = False,
+        batch_size: int = MAX_FINANCIAL_SYMBOLS,
+        show_progress: bool = False,
+        max_concurrency: int = 5,
+    ) -> Union[Dict[str, List["SharesRecord"]], "pd.DataFrame"]:
+        """Get shares data (total shares and float shares)."""
+        return await self._query(
+            _STMT_ENDPOINTS["shares"],
+            symbols,
+            start_date,
+            end_date,
+            latest,
+            as_dataframe,
+            "shares",
             batch_size,
             show_progress,
             max_concurrency,

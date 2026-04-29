@@ -1,6 +1,6 @@
 [project]
 name = "tickflow"
-version = "0.1.20"
+version = "0.1.21"
 description = "TickFlow Python Client"
 readme = "README.md"
 requires-python = ">=3.9"
