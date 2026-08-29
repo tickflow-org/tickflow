@@ -667,6 +667,101 @@ class Klines(SyncResource):
             progress_desc="Fetching intraday K-lines",
         )
 
+    @overload
+    def intraday_universe(
+        self,
+        universes: Union[str, List[str]],
+        *,
+        period: Union["Period", NotGiven] = NOT_GIVEN,
+        count: Union[int, NotGiven] = NOT_GIVEN,
+        start_time: Union[int, None, NotGiven] = NOT_GIVEN,
+        end_time: Union[int, None, NotGiven] = NOT_GIVEN,
+        as_dataframe: Literal[False] = False,
+    ) -> Dict[str, "CompactKlineData"]: ...
+
+    @overload
+    def intraday_universe(
+        self,
+        universes: Union[str, List[str]],
+        *,
+        period: Union["Period", NotGiven] = NOT_GIVEN,
+        count: Union[int, NotGiven] = NOT_GIVEN,
+        start_time: Union[int, None, NotGiven] = NOT_GIVEN,
+        end_time: Union[int, None, NotGiven] = NOT_GIVEN,
+        as_dataframe: Literal[True],
+    ) -> Dict[str, "pd.DataFrame"]: ...
+
+    def intraday_universe(
+        self,
+        universes: Union[str, List[str]],
+        *,
+        period: Union["Period", NotGiven] = NOT_GIVEN,
+        count: Union[int, NotGiven] = NOT_GIVEN,
+        start_time: Union[int, None, NotGiven] = NOT_GIVEN,
+        end_time: Union[int, None, NotGiven] = NOT_GIVEN,
+        as_dataframe: bool = False,
+    ) -> Union[Dict[str, "CompactKlineData"], Dict[str, "pd.DataFrame"]]:
+        """Get intraday minute K-line data for all symbols in one or more universes.
+
+        This is the most efficient way to fetch intraday data for an entire
+        market (e.g., all A-shares). Instead of specifying individual symbols,
+        you pass a universe ID and the server returns data for every symbol
+        in that universe in a single response.
+
+        Parameters
+        ----------
+        universes : str or list of str
+            Universe ID(s) (e.g., "CN_Equity_A", "CN_Index").
+            Can be a single string or a list of strings.
+        period : str, optional
+            K-line period. One of: "1m", "5m", "15m", "30m", "60m".
+            Defaults to "1m".
+        count : int, optional
+            Number of most recent K-lines per symbol.
+        start_time : int, optional
+            Start timestamp in milliseconds.
+        end_time : int, optional
+            End timestamp in milliseconds.
+        as_dataframe : bool, optional
+            If True, return dict of DataFrames. Default False.
+
+        Returns
+        -------
+        dict
+            If as_dataframe=False: dict mapping symbol codes to CompactKlineData.
+            If as_dataframe=True: dict mapping symbol codes to DataFrames.
+
+        Examples
+        --------
+        >>> data = client.klines.intraday_universe("CN_Equity_A", count=3)
+        >>> print(f"Got {len(data)} symbols")
+
+        >>> dfs = client.klines.intraday_universe("CN_Equity_A", count=1, as_dataframe=True)
+        >>> dfs["600000.SH"].tail()
+        """
+        if isinstance(universes, list):
+            universes_str = ",".join(universes)
+        else:
+            universes_str = universes
+
+        params: Dict[str, Any] = {"universes": universes_str}
+        if not isinstance(period, NotGiven):
+            params["period"] = period
+        if not isinstance(count, NotGiven):
+            params["count"] = count
+        if not isinstance(start_time, NotGiven) and start_time is not None:
+            params["start_time"] = start_time
+        if not isinstance(end_time, NotGiven) and end_time is not None:
+            params["end_time"] = end_time
+
+        response = self._client.get("/v1/klines/intraday/universe", params=params)
+        data: Dict[str, "CompactKlineData"] = response["data"]
+
+        if as_dataframe:
+            names = self._resolve_names(list(data.keys()))
+            return _batch_klines_to_dataframes(data, names=names)
+        return data
+
     def ex_factors(
         self,
         symbols: List[str],
@@ -1195,6 +1290,101 @@ class AsyncKlines(AsyncResource):
             max_concurrency=max_concurrency,
             progress_desc="Fetching intraday K-lines",
         )
+
+    @overload
+    async def intraday_universe(
+        self,
+        universes: Union[str, List[str]],
+        *,
+        period: Union["Period", NotGiven] = NOT_GIVEN,
+        count: Union[int, NotGiven] = NOT_GIVEN,
+        start_time: Union[int, None, NotGiven] = NOT_GIVEN,
+        end_time: Union[int, None, NotGiven] = NOT_GIVEN,
+        as_dataframe: Literal[False] = False,
+    ) -> Dict[str, "CompactKlineData"]: ...
+
+    @overload
+    async def intraday_universe(
+        self,
+        universes: Union[str, List[str]],
+        *,
+        period: Union["Period", NotGiven] = NOT_GIVEN,
+        count: Union[int, NotGiven] = NOT_GIVEN,
+        start_time: Union[int, None, NotGiven] = NOT_GIVEN,
+        end_time: Union[int, None, NotGiven] = NOT_GIVEN,
+        as_dataframe: Literal[True],
+    ) -> Dict[str, "pd.DataFrame"]: ...
+
+    async def intraday_universe(
+        self,
+        universes: Union[str, List[str]],
+        *,
+        period: Union["Period", NotGiven] = NOT_GIVEN,
+        count: Union[int, NotGiven] = NOT_GIVEN,
+        start_time: Union[int, None, NotGiven] = NOT_GIVEN,
+        end_time: Union[int, None, NotGiven] = NOT_GIVEN,
+        as_dataframe: bool = False,
+    ) -> Union[Dict[str, "CompactKlineData"], Dict[str, "pd.DataFrame"]]:
+        """Get intraday minute K-line data for all symbols in one or more universes.
+
+        This is the most efficient way to fetch intraday data for an entire
+        market (e.g., all A-shares). Instead of specifying individual symbols,
+        you pass a universe ID and the server returns data for every symbol
+        in that universe in a single response.
+
+        Parameters
+        ----------
+        universes : str or list of str
+            Universe ID(s) (e.g., "CN_Equity_A", "CN_Index").
+            Can be a single string or a list of strings.
+        period : str, optional
+            K-line period. One of: "1m", "5m", "15m", "30m", "60m".
+            Defaults to "1m".
+        count : int, optional
+            Number of most recent K-lines per symbol.
+        start_time : int, optional
+            Start timestamp in milliseconds.
+        end_time : int, optional
+            End timestamp in milliseconds.
+        as_dataframe : bool, optional
+            If True, return dict of DataFrames. Default False.
+
+        Returns
+        -------
+        dict
+            If as_dataframe=False: dict mapping symbol codes to CompactKlineData.
+            If as_dataframe=True: dict mapping symbol codes to DataFrames.
+
+        Examples
+        --------
+        >>> data = await client.klines.intraday_universe("CN_Equity_A", count=3)
+        >>> print(f"Got {len(data)} symbols")
+
+        >>> dfs = await client.klines.intraday_universe("CN_Equity_A", count=1, as_dataframe=True)
+        >>> dfs["600000.SH"].tail()
+        """
+        if isinstance(universes, list):
+            universes_str = ",".join(universes)
+        else:
+            universes_str = universes
+
+        params: Dict[str, Any] = {"universes": universes_str}
+        if not isinstance(period, NotGiven):
+            params["period"] = period
+        if not isinstance(count, NotGiven):
+            params["count"] = count
+        if not isinstance(start_time, NotGiven) and start_time is not None:
+            params["start_time"] = start_time
+        if not isinstance(end_time, NotGiven) and end_time is not None:
+            params["end_time"] = end_time
+
+        response = await self._client.get("/v1/klines/intraday/universe", params=params)
+        data: Dict[str, "CompactKlineData"] = response["data"]
+
+        if as_dataframe:
+            names = await self._resolve_names(list(data.keys()))
+            return _batch_klines_to_dataframes(data, names=names)
+        return data
 
     async def ex_factors(
         self,

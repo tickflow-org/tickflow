@@ -118,7 +118,7 @@ from tickflow import TickFlow
 # 使用完整服务（需要 API key）
 tf = TickFlow(api_key="your-api-key")
 
-# 获取沪深 A 股实时行情
+# 获取沪深京 A 股实时行情
 quotes = tf.quotes.get(symbols=["600000.SH", "000001.SZ"])
 
 for q in quotes:
