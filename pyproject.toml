@@ -1,6 +1,6 @@
 [project]
 name = "tickflow"
-version = "0.1.25"
+version = "0.1.26"
 description = "TickFlow Python Client"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -24,7 +24,8 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "httpx>=0.25.0",
+    "httpx>=0.28.1",
+    "zstandard>=0.22.0",
     "typing-extensions>=4.0.0",
 ]
 

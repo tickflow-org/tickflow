@@ -120,6 +120,7 @@ class BaseClient:
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
+            "Accept-Encoding": "zstd, gzip",
             "User-Agent": f"tickflow-python-sdk/{__version__}",
             **self._default_headers,
         }
